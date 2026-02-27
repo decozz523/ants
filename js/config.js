@@ -12,7 +12,9 @@ const CONFIG = {
     INITIAL_ANTS: 20,
     INITIAL_FOOD: 30,
     INITIAL_PREDATORS: 3,
+    INITIAL_GIANT_SPIDERS: 2,
     INITIAL_TREES: 10,
+    INITIAL_WATER_ZONES: 3,
     
     // Параметры эволюции
     GENERATION_STEPS: 1500,        // Шагов на поколение
@@ -28,6 +30,7 @@ const CONFIG = {
     ANT_VISION_MAX: 200,
     ANT_CAUTIOUS_MIN: 0,
     ANT_CAUTIOUS_MAX: 1,
+    ANT_PHEROMONE_DEPOSIT: 1.2,
     
     // Параметры еды
     FOOD_SIZE: 8,
