@@ -7,12 +7,15 @@ class UI {
         this.generationSpan = document.getElementById('generation');
         this.antCountSpan = document.getElementById('ant-count');
         this.foodCountSpan = document.getElementById('food-count');
-        
+        this.anthillFoodSpan = document.getElementById('anthill-food');
+        this.spiderCountSpan = document.getElementById('spider-count');
+        this.weatherStateSpan = document.getElementById('weather-state');
+
         this.selectedAnt = null;
     }
     
     // Обновить общую статистику
-    updateStats(generation, ants, food) {
+    updateStats(generation, ants, food, anthill = null, giantSpiders = [], weatherState = 'clear') {
         this.generationSpan.textContent = generation;
         
         const aliveAnts = ants.filter(ant => !ant.dead).length;
@@ -20,6 +23,18 @@ class UI {
         
         const activeFood = food.filter(f => !f.eaten).length;
         this.foodCountSpan.textContent = activeFood;
+
+        if (this.anthillFoodSpan) {
+            this.anthillFoodSpan.textContent = anthill ? anthill.foodStorage : 0;
+        }
+
+        if (this.spiderCountSpan) {
+            this.spiderCountSpan.textContent = giantSpiders.length;
+        }
+
+        if (this.weatherStateSpan) {
+            this.weatherStateSpan.textContent = weatherState;
+        }
     }
     
     // Показать информацию о муравье
@@ -44,6 +59,9 @@ class UI {
         html += `<p>📊 Фитнес: <span style="color: #ffaa00; float: right;">${info['Фитнес']}</span></p>`;
         html += `<p>👣 Шагов: <span style="color: #888; float: right;">${info['Шагов']}</span></p>`;
         html += `<p>🧠 Память: <span style="color: #888; float: right;">${info['Память']}</span></p>`;
+        html += `<p>🫀 Здоровье: <span style="color: #ff8a80; float: right;">${info['Здоровье']}</span></p>`;
+        html += `<p>📦 Несу еду: <span style="color: #ffd54f; float: right;">${info['Несу еду']}</span></p>`;
+        html += `<p>🏠 В муравейнике: <span style="color: #90caf9; float: right;">${info['В муравейнике']}</span></p>`;
         
         html += `</div></div>`;
         
