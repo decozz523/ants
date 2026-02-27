@@ -49,6 +49,9 @@ class Ant {
         this.size = CONFIG.ANT_SIZE;
         this.selected = false;
         this.color = CONFIG.COLORS.ANT;
+
+        // Ссылка на мир для коллизий
+        this.world = null;
     }
 
     update(food, predators, trees, allAnts, stepCount, anthill = null) {
