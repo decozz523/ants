@@ -9,12 +9,13 @@ class UI {
         this.foodCountSpan = document.getElementById('food-count');
         this.anthillFoodSpan = document.getElementById('anthill-food');
         this.spiderCountSpan = document.getElementById('spider-count');
+        this.weatherStateSpan = document.getElementById('weather-state');
 
         this.selectedAnt = null;
     }
     
     // Обновить общую статистику
-    updateStats(generation, ants, food, anthill = null, giantSpiders = []) {
+    updateStats(generation, ants, food, anthill = null, giantSpiders = [], weatherState = 'clear') {
         this.generationSpan.textContent = generation;
         
         const aliveAnts = ants.filter(ant => !ant.dead).length;
@@ -29,6 +30,10 @@ class UI {
 
         if (this.spiderCountSpan) {
             this.spiderCountSpan.textContent = giantSpiders.length;
+        }
+
+        if (this.weatherStateSpan) {
+            this.weatherStateSpan.textContent = weatherState;
         }
     }
     

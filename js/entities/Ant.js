@@ -54,11 +54,11 @@ class Ant {
         this.world = null;
     }
 
-    update(food, predators, trees, allAnts, stepCount, anthill = null) {
+    update(food, predators, trees, allAnts, stepCount, anthill = null, env = {}) {
         if (this.dead) return;
 
         this.anthill = anthill || this.anthill;
-        this.world = { trees };
+        this.world = { trees, waterZones: env.waterZones || [] };
 
         if (this.insideAnthill) {
             this.updateIndoorMovement();
@@ -73,7 +73,8 @@ class Ant {
         const oldX = this.x;
         const oldY = this.y;
 
-        const perception = this.perceive(food, predators, trees, allAnts);
+        const visionPenalty = env.weatherEffects && env.weatherEffects.visionPenalty ? env.weatherEffects.visionPenalty : 1;
+        const perception = this.perceive(food, predators, trees, allAnts, visionPenalty);
 
         if (this.age - this.lastCommunication > 60) {
             const nearbyAnts = allAnts.filter(ant =>
@@ -87,8 +88,8 @@ class Ant {
             }
         }
 
-        this.decide(perception);
-        this.move();
+        this.decide(perception, env.pheromones);
+        this.move(env.weatherEffects);
         this.interact(food, predators);
 
         if (this.anthill && this.carryingFood) {
@@ -106,6 +107,11 @@ class Ant {
         this.distanceTraveled += distMoved;
         this.stepsSinceLastFood++;
         this.age++;
+
+        if (env.pheromones) {
+            if (this.carryingFood) env.pheromones.deposit('food', this.x, this.y, CONFIG.ANT_PHEROMONE_DEPOSIT);
+            if (perception.nearestPredator) env.pheromones.deposit('danger', this.x, this.y, 1.6);
+        }
 
         if (this.fearTimer > 0) this.fearTimer--;
         this.updateMemory(perception, stepCount);
@@ -153,7 +159,7 @@ class Ant {
         this.y = this.anthill.y + Math.sin(angle) * dist;
     }
 
-    perceive(food, predators, trees) {
+    perceive(food, predators, trees, allAnts, visionPenalty = 1) {
         const perception = {
             nearestFood: null,
             nearestPredator: null,
@@ -164,13 +170,14 @@ class Ant {
             predatorDistance: Infinity
         };
 
-        let minFoodDist = this.dna.visionRadius;
-        let minPredDist = this.dna.visionRadius;
+        const visionRadius = this.dna.visionRadius * visionPenalty;
+        let minFoodDist = visionRadius;
+        let minPredDist = visionRadius;
 
         food.forEach(f => {
             if (!f.eaten) {
                 const dist = Math.hypot(f.x - this.x, f.y - this.y);
-                if (dist < this.dna.visionRadius) {
+                if (dist < visionRadius) {
                     perception.foodInVision.push({ ...f, dist });
                     if (dist < minFoodDist) {
                         minFoodDist = dist;
@@ -183,7 +190,7 @@ class Ant {
 
         predators.forEach(p => {
             const dist = Math.hypot(p.x - this.x, p.y - this.y);
-            if (dist < this.dna.visionRadius) {
+            if (dist < visionRadius) {
                 perception.predatorsInVision.push({ ...p, dist });
                 if (dist < minPredDist) {
                     minPredDist = dist;
@@ -203,7 +210,7 @@ class Ant {
         return perception;
     }
 
-    decide(perception) {
+    decide(perception, pheromones = null) {
         if (perception.nearestPredator) {
             const dangerLevel = 1 - (perception.predatorDistance / this.dna.visionRadius);
             const cautionBoost = this.fearTimer > 0 ? 1.3 : 1;
@@ -226,6 +233,17 @@ class Ant {
         if (this.memory.foodPositions.length > 0 && Math.random() < 0.35) {
             this.seek(this.memory.foodPositions[0]);
             return;
+        }
+
+        if (!perception.nearestFood && pheromones && !this.carryingFood) {
+            const foodSignal = pheromones.sample('food', this.x, this.y);
+            const dangerSignal = pheromones.sample('danger', this.x, this.y);
+            if (foodSignal > 8 && dangerSignal < 25) {
+                this.angle += (Math.random() - 0.5) * 0.2;
+                this.targetVx += Math.cos(this.angle) * 0.2;
+                this.targetVy += Math.sin(this.angle) * 0.2;
+                return;
+            }
         }
 
         if (Math.random() < this.dna.explorationBias) {
@@ -264,14 +282,15 @@ class Ant {
         this.targetVy = Math.sin(this.angle) * this.dna.speed;
     }
 
-    move() {
+    move(weatherEffects = null) {
         const smoothing = 0.18;
         this.vx += (this.targetVx - this.vx) * smoothing;
         this.vy += (this.targetVy - this.vy) * smoothing;
 
+        const speedMultiplier = weatherEffects && weatherEffects.antSpeedMultiplier ? weatherEffects.antSpeedMultiplier : 1;
         const currentSpeed = Math.hypot(this.vx, this.vy);
-        if (currentSpeed > this.dna.speed * 1.6) {
-            const scale = (this.dna.speed * 1.6) / currentSpeed;
+        if (currentSpeed > this.dna.speed * 1.6 * speedMultiplier) {
+            const scale = (this.dna.speed * 1.6 * speedMultiplier) / currentSpeed;
             this.vx *= scale;
             this.vy *= scale;
         }
@@ -287,6 +306,15 @@ class Ant {
         } else {
             this.x = newX;
             this.y = newY;
+        }
+
+        if (this.world && this.world.waterZones) {
+            for (const zone of this.world.waterZones) {
+                if (zone.contains(this.x, this.y)) {
+                    this.vx *= 0.82;
+                    this.vy *= 0.82;
+                }
+            }
         }
 
         this.x = Math.max(this.size, Math.min(CONFIG.WORLD_WIDTH - this.size, this.x));
