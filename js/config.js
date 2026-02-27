@@ -12,6 +12,7 @@ const CONFIG = {
     INITIAL_ANTS: 20,
     INITIAL_FOOD: 30,
     INITIAL_PREDATORS: 3,
+    INITIAL_GIANT_SPIDERS: 2,
     INITIAL_TREES: 10,
     
     // Параметры эволюции
