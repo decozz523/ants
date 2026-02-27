@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Муравьи: Эволюционный эксперимент</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <canvas id="canvas" width="800" height="600"></canvas>
+        <div class="info-panel" id="info-panel">
+            <h3>Информация о муравье</h3>
+            <div id="ant-info">Кликните на муравья</div>
+            <div class="stats">
+                <div>Поколение: <span id="generation">1</span></div>
+                <div>Муравьев: <span id="ant-count">20</span></div>
+                <div>Еды: <span id="food-count">30</span></div>
+            </div>
+            <div class="controls">
+                <h4>Управление:</h4>
+                <p>WASD - движение камеры</p>
+                <p>Колесико - зум</p>
+                <p>Клик на муравья - слежение</p>
+                <p>Пробел - открепить камеру</p>
+            </div>
+        </div>
+    </div>
+    <script src="js/config.js"></script>
+    <script src="js/entities/Tree.js"></script>
+    <script src="js/entities/Food.js"></script>
+    <script src="js/entities/Predator.js"></script>
+    <script src="js/evolution/Genetics.js"></script>
+    <script src="js/entities/Ant.js"></script>
+    <script src="js/utils/Camera.js"></script>
+    <script src="js/utils/UI.js"></script>
+    <script src="js/main.js"></script>
+</body>
+</html>
