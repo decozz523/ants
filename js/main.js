@@ -1,10 +1,13 @@
 // main.js - главный файл, запускает симуляцию
 
 document.addEventListener('DOMContentLoaded', () => {
-    console.log('Симуляция запускается...');
-
     const canvas = document.getElementById('canvas');
     const ctx = canvas.getContext('2d');
+
+    const anthillModal = document.getElementById('anthill-modal');
+    const anthillCanvas = document.getElementById('anthill-canvas');
+    const anthillCtx = anthillCanvas.getContext('2d');
+    const anthillCloseBtn = document.getElementById('anthill-close');
 
     const camera = new Camera(
         CONFIG.CANVAS_WIDTH,
@@ -18,6 +21,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let generation = 1;
     let stepCount = 0;
     let paused = false;
+    let anthillViewOpen = false;
 
     let ants = [];
     let food = [];
@@ -29,15 +33,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function spawnFood(amount = 1) {
         for (let i = 0; i < amount; i++) {
-            const x = Math.random() * CONFIG.WORLD_WIDTH;
-            const y = Math.random() * CONFIG.WORLD_HEIGHT;
-            food.push(new Food(x, y));
+            food.push(new Food(Math.random() * CONFIG.WORLD_WIDTH, Math.random() * CONFIG.WORLD_HEIGHT));
         }
     }
 
     function initWorld() {
-        console.log('Инициализация мира V2...');
-
         trees = [];
         food = [];
         predators = [];
@@ -68,36 +68,31 @@ document.addEventListener('DOMContentLoaded', () => {
         for (let i = 0; i < CONFIG.INITIAL_ANTS; i++) {
             const angle = Math.random() * Math.PI * 2;
             const dist = 40 + Math.random() * 80;
-            const x = anthill.x + Math.cos(angle) * dist;
-            const y = anthill.y + Math.sin(angle) * dist;
-            const ant = new Ant(x, y, Genetics.createRandomDNA(), anthill);
-            ants.push(ant);
+            ants.push(new Ant(
+                anthill.x + Math.cos(angle) * dist,
+                anthill.y + Math.sin(angle) * dist,
+                Genetics.createRandomDNA(),
+                anthill
+            ));
         }
 
         anthill.population = ants.length;
-
         camera.x = CONFIG.WORLD_WIDTH / 2;
         camera.y = CONFIG.WORLD_HEIGHT / 2;
         camera.scale = 0.5;
-
-        console.log('Мир V2 создан');
     }
 
     function updateSpidersAndWebs() {
         giantSpiders.forEach(spider => {
             spider.update(ants);
-
-            // Дополнительная деталь: паутина замедляет и наносит небольшой урон муравьям
             spider.webTraps.forEach(web => {
                 ants.forEach(ant => {
-                    if (ant.dead) return;
+                    if (ant.dead || ant.insideAnthill) return;
                     const dist = Math.hypot(ant.x - web.x, ant.y - web.y);
                     if (dist < 20) {
                         ant.vx *= 0.85;
                         ant.vy *= 0.85;
-                        if (Math.random() < 0.03) {
-                            ant.takeDamage(1);
-                        }
+                        if (Math.random() < 0.03) ant.takeDamage(1);
                     }
                 });
             });
@@ -106,7 +101,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function update() {
         if (paused) return;
-
         stepCount++;
 
         ants.forEach(ant => {
@@ -116,22 +110,17 @@ document.addEventListener('DOMContentLoaded', () => {
         predators.forEach(p => p.update());
         updateSpidersAndWebs();
 
-        const beforeCount = ants.length;
         ants = ants.filter(ant => !ant.dead);
         anthill.population = ants.length;
 
-        if (beforeCount !== ants.length && ui.selectedAnt && ui.selectedAnt.dead) {
+        if (ui.selectedAnt && ui.selectedAnt.dead) {
             ui.clearAntInfo();
             camera.followingAnt = null;
         }
 
         food = food.filter(f => !f.eaten);
+        if (food.length < CONFIG.INITIAL_FOOD / 2) spawnFood(3);
 
-        if (food.length < CONFIG.INITIAL_FOOD / 2) {
-            spawnFood(3);
-        }
-
-        // Дополнительная деталь: за накопленную еду муравейник расширяется
         if (anthill.foodStorage >= lastRoomExpansionAt + 8 && anthill.rooms.length < 10) {
             anthill.digRoom();
             lastRoomExpansionAt = anthill.foodStorage;
@@ -145,8 +134,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function endGeneration() {
-        console.log('Поколение', generation, 'завершено');
-
         if (ants.length === 0) {
             initWorld();
             generation++;
@@ -159,126 +146,135 @@ document.addEventListener('DOMContentLoaded', () => {
             ant.fitness = Genetics.calculateFitness(ant) + ant.foodEaten * 20;
         });
 
-        const newAnts = Genetics.createNewGeneration(ants, CONFIG.WORLD_WIDTH, CONFIG.WORLD_HEIGHT)
-            .map(ant => {
-                const angle = Math.random() * Math.PI * 2;
-                const dist = 30 + Math.random() * 70;
-                ant.x = anthill.x + Math.cos(angle) * dist;
-                ant.y = anthill.y + Math.sin(angle) * dist;
-                ant.anthill = anthill;
-                return ant;
-            });
+        ants = Genetics.createNewGeneration(ants, CONFIG.WORLD_WIDTH, CONFIG.WORLD_HEIGHT).map(ant => {
+            const angle = Math.random() * Math.PI * 2;
+            const dist = 30 + Math.random() * 70;
+            ant.x = anthill.x + Math.cos(angle) * dist;
+            ant.y = anthill.y + Math.sin(angle) * dist;
+            ant.anthill = anthill;
+            return ant;
+        });
 
-        const bestFitness = Math.max(...ants.map(a => a.fitness));
-        const avgFitness = ants.reduce((sum, a) => sum + a.fitness, 0) / ants.length;
-        console.log(`Лучший фитнес: ${bestFitness.toFixed(0)}, Средний: ${avgFitness.toFixed(0)}`);
-
-        ants = newAnts;
         anthill.population = ants.length;
         generation++;
         stepCount = 0;
-
         ui.showMessage(`Поколение ${generation}`, 'success');
 
-        if (camera.followingAnt) {
-            camera.followingAnt = null;
-        }
+        if (camera.followingAnt) camera.followingAnt = null;
     }
 
-    function draw() {
+    function drawMainWorld() {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         ctx.fillStyle = CONFIG.COLORS.GRASS;
         ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
-        ctx.lineWidth = 1;
+        if (anthill && camera.isVisible(anthill)) anthill.draw(ctx, camera);
 
-        const gridSize = 50;
-        const startX = Math.floor((camera.x - canvas.width / (2 * camera.scale)) / gridSize) * gridSize;
-        const startY = Math.floor((camera.y - canvas.height / (2 * camera.scale)) / gridSize) * gridSize;
-        const endX = camera.x + canvas.width / (2 * camera.scale);
-        const endY = camera.y + canvas.height / (2 * camera.scale);
-
-        ctx.beginPath();
-        for (let x = startX; x < endX; x += gridSize) {
-            const screenX = (x - camera.x) * camera.scale + canvas.width / 2;
-            if (screenX >= 0 && screenX <= canvas.width) {
-                ctx.moveTo(screenX, 0);
-                ctx.lineTo(screenX, canvas.height);
-            }
-        }
-        for (let y = startY; y < endY; y += gridSize) {
-            const screenY = (y - camera.y) * camera.scale + canvas.height / 2;
-            if (screenY >= 0 && screenY <= canvas.height) {
-                ctx.moveTo(0, screenY);
-                ctx.lineTo(canvas.width, screenY);
-            }
-        }
-        ctx.stroke();
-
-        let visibleCount = 0;
-
-        if (anthill && camera.isVisible(anthill)) {
-            anthill.draw(ctx, camera);
-            visibleCount++;
-        }
-
-        trees.forEach(obj => {
-            if (camera.isVisible(obj)) {
-                obj.draw(ctx, camera);
-                visibleCount++;
-            }
-        });
-
-        food.forEach(obj => {
-            if (camera.isVisible(obj)) {
-                obj.draw(ctx, camera);
-                visibleCount++;
-            }
-        });
-
-        predators.forEach(obj => {
-            if (camera.isVisible(obj)) {
-                obj.draw(ctx, camera);
-                visibleCount++;
-            }
-        });
-
-        giantSpiders.forEach(obj => {
-            if (camera.isVisible(obj)) {
-                obj.draw(ctx, camera);
-                visibleCount++;
-            }
-        });
-
-        ants.forEach(obj => {
-            if (camera.isVisible(obj)) {
-                obj.draw(ctx, camera);
-                visibleCount++;
-            }
-        });
+        trees.forEach(obj => { if (camera.isVisible(obj)) obj.draw(ctx, camera); });
+        food.forEach(obj => { if (camera.isVisible(obj)) obj.draw(ctx, camera); });
+        predators.forEach(obj => { if (camera.isVisible(obj)) obj.draw(ctx, camera); });
+        giantSpiders.forEach(obj => { if (camera.isVisible(obj)) obj.draw(ctx, camera); });
+        ants.forEach(obj => { if (camera.isVisible(obj)) obj.draw(ctx, camera); });
 
         ui.updateStats(generation, ants, food, anthill, giantSpiders);
 
         ctx.fillStyle = 'white';
         ctx.font = '12px Arial';
-        ctx.fillText(`Объектов видно: ${visibleCount}`, 10, 20);
-        ctx.fillText(`Масштаб: ${camera.scale.toFixed(2)}`, 10, 40);
-        ctx.fillText(`Позиция: (${Math.floor(camera.x)}, ${Math.floor(camera.y)})`, 10, 60);
-        ctx.fillText(`Запас колонии: ${anthill ? anthill.foodStorage : 0}`, 10, 80);
+        ctx.fillText(`Поколение: ${generation}`, 10, 20);
+        ctx.fillText(`Запас колонии: ${anthill ? anthill.foodStorage : 0}`, 10, 40);
+        ctx.fillText(`Внутри муравейника: ${ants.filter(a => a.insideAnthill).length}`, 10, 60);
+    }
+
+    function drawAnthillWorld() {
+        if (!anthillViewOpen || !anthill) return;
+
+        anthillCtx.clearRect(0, 0, anthillCanvas.width, anthillCanvas.height);
+        anthillCtx.fillStyle = '#101010';
+        anthillCtx.fillRect(0, 0, anthillCanvas.width, anthillCanvas.height);
+
+        const bounds = {
+            minX: Math.min(...anthill.rooms.map(r => r.x - r.radius)) - 30,
+            maxX: Math.max(...anthill.rooms.map(r => r.x + r.radius)) + 30,
+            minY: Math.min(...anthill.rooms.map(r => r.y - r.radius)) - 30,
+            maxY: Math.max(...anthill.rooms.map(r => r.y + r.radius)) + 30
+        };
+
+        const scaleX = anthillCanvas.width / (bounds.maxX - bounds.minX);
+        const scaleY = anthillCanvas.height / (bounds.maxY - bounds.minY);
+        const scale = Math.min(scaleX, scaleY);
+
+        function toScreen(x, y) {
+            return {
+                x: (x - bounds.minX) * scale,
+                y: (y - bounds.minY) * scale
+            };
+        }
+
+        anthill.tunnels.forEach(tunnel => {
+            anthillCtx.strokeStyle = '#6d4c41';
+            anthillCtx.lineWidth = 4;
+            anthillCtx.beginPath();
+            tunnel.points.forEach((p, i) => {
+                const s = toScreen(p.x, p.y);
+                if (i === 0) anthillCtx.moveTo(s.x, s.y);
+                else anthillCtx.lineTo(s.x, s.y);
+            });
+            anthillCtx.stroke();
+        });
+
+        anthill.rooms.forEach(room => {
+            const s = toScreen(room.x, room.y);
+            const color = room.type === 'main' ? '#8B4513' : room.type === 'storage' ? '#DAA520' : '#A0522D';
+            anthillCtx.fillStyle = color;
+            anthillCtx.beginPath();
+            anthillCtx.arc(s.x, s.y, room.radius * scale, 0, Math.PI * 2);
+            anthillCtx.fill();
+            anthillCtx.strokeStyle = '#3e2723';
+            anthillCtx.stroke();
+        });
+
+        ants.filter(ant => ant.insideAnthill && !ant.dead).forEach(ant => {
+            const s = toScreen(ant.indoorX, ant.indoorY);
+            anthillCtx.fillStyle = ant.selected ? '#ffff00' : '#ffb300';
+            anthillCtx.beginPath();
+            anthillCtx.arc(s.x, s.y, 3, 0, Math.PI * 2);
+            anthillCtx.fill();
+        });
+
+        anthillCtx.fillStyle = 'white';
+        anthillCtx.font = '14px Arial';
+        anthillCtx.fillText(`Внутри: ${ants.filter(a => a.insideAnthill).length}  Запас еды: ${anthill.foodStorage}`, 12, 20);
+    }
+
+    function draw() {
+        drawMainWorld();
+        drawAnthillWorld();
+    }
+
+    function toggleAnthillView(open) {
+        anthillViewOpen = open;
+        anthillModal.classList.toggle('hidden', !open);
     }
 
     canvas.addEventListener('click', (e) => {
         const rect = canvas.getBoundingClientRect();
         const mouseX = e.clientX - rect.left;
         const mouseY = e.clientY - rect.top;
-
         const worldPos = camera.screenToWorld(mouseX, mouseY);
+
+        if (anthill) {
+            const distToAnthill = Math.hypot(worldPos.x - anthill.x, worldPos.y - anthill.y);
+            if (distToAnthill < anthill.size) {
+                toggleAnthillView(true);
+                return;
+            }
+        }
 
         let clickedAnt = null;
         let minDist = 20 / camera.scale;
 
         ants.forEach(ant => {
+            if (ant.insideAnthill) return;
             const dist = Math.hypot(ant.x - worldPos.x, ant.y - worldPos.y);
             if (dist < minDist) {
                 clickedAnt = ant;
@@ -291,9 +287,12 @@ document.addEventListener('DOMContentLoaded', () => {
             clickedAnt.selected = true;
             camera.follow(clickedAnt);
             ui.showAntInfo(clickedAnt);
-        } else {
-            console.log('Клик в мире:', worldPos);
         }
+    });
+
+    anthillCloseBtn.addEventListener('click', () => toggleAnthillView(false));
+    anthillModal.addEventListener('click', (e) => {
+        if (e.target === anthillModal) toggleAnthillView(false);
     });
 
     window.addEventListener('keydown', (e) => {
@@ -306,6 +305,9 @@ document.addEventListener('DOMContentLoaded', () => {
             generation = 1;
             stepCount = 0;
             ui.showMessage('Мир V2 перезапущен!');
+        }
+        if (e.key === 'Escape' && anthillViewOpen) {
+            toggleAnthillView(false);
         }
     });
 

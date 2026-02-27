@@ -56,6 +56,7 @@ class UI {
         html += `<p>🧠 Память: <span style="color: #888; float: right;">${info['Память']}</span></p>`;
         html += `<p>🫀 Здоровье: <span style="color: #ff8a80; float: right;">${info['Здоровье']}</span></p>`;
         html += `<p>📦 Несу еду: <span style="color: #ffd54f; float: right;">${info['Несу еду']}</span></p>`;
+        html += `<p>🏠 В муравейнике: <span style="color: #90caf9; float: right;">${info['В муравейнике']}</span></p>`;
         
         html += `</div></div>`;
         

@@ -5,25 +5,33 @@ class Ant {
         this.x = x;
         this.y = y;
 
-        // ДНК (если не передана, создаем случайную)
         this.dna = dna || Genetics.createRandomDNA();
 
-        // Состояние
-        this.vx = (Math.random() - 0.5) * this.dna.speed;
-        this.vy = (Math.random() - 0.5) * this.dna.speed;
+        this.vx = 0;
+        this.vy = 0;
+        this.targetVx = 0;
+        this.targetVy = 0;
         this.angle = Math.random() * Math.PI * 2;
+
         this.dead = false;
         this.health = 100;
         this.maxHealth = 100;
 
-        // V2: взаимодействие с муравейником
         this.anthill = anthill;
         this.carryingFood = false;
         this.communicationRange = 100;
         this.lastCommunication = 0;
         this.fearTimer = 0;
+        this.world = null;
 
-        // Память
+        // Муравей в отдельном мире муравейника
+        this.insideAnthill = false;
+        this.indoorX = 0;
+        this.indoorY = 0;
+        this.indoorTargetX = 0;
+        this.indoorTargetY = 0;
+        this.indoorTimer = 0;
+
         this.memory = {
             foodPositions: [],
             dangerPositions: [],
@@ -31,7 +39,6 @@ class Ant {
             homePosition: { x, y }
         };
 
-        // Статистика для фитнеса
         this.fitness = 0;
         this.foodEaten = 0;
         this.deathEncounters = 0;
@@ -39,7 +46,6 @@ class Ant {
         this.stepsSinceLastFood = 0;
         this.age = 0;
 
-        // Визуальные
         this.size = CONFIG.ANT_SIZE;
         this.selected = false;
         this.color = CONFIG.COLORS.ANT;
@@ -54,16 +60,26 @@ class Ant {
         this.anthill = anthill || this.anthill;
         this.world = { trees };
 
+        if (this.insideAnthill) {
+            this.updateIndoorMovement();
+            this.age++;
+            if (this.indoorTimer > 0) this.indoorTimer--;
+            if (this.indoorTimer <= 0 && this.anthill) {
+                this.exitAnthill();
+            }
+            return;
+        }
+
         const oldX = this.x;
         const oldY = this.y;
 
         const perception = this.perceive(food, predators, trees, allAnts);
 
-        // Коммуникация между муравьями
         if (this.age - this.lastCommunication > 60) {
             const nearbyAnts = allAnts.filter(ant =>
                 ant !== this &&
                 !ant.dead &&
+                !ant.insideAnthill &&
                 Math.hypot(ant.x - this.x, ant.y - this.y) < this.communicationRange
             );
             if (nearbyAnts.length > 0) {
@@ -75,10 +91,10 @@ class Ant {
         this.move();
         this.interact(food, predators);
 
-        // Если несем еду — возвращаем в муравейник
         if (this.anthill && this.carryingFood) {
             const distToAnthill = Math.hypot(this.anthill.x - this.x, this.anthill.y - this.y);
             if (distToAnthill < this.anthill.size) {
+                this.enterAnthill();
                 this.anthill.addFood(1);
                 this.carryingFood = false;
                 this.foodEaten++;
@@ -91,19 +107,57 @@ class Ant {
         this.stepsSinceLastFood++;
         this.age++;
 
-        if (this.fearTimer > 0) {
-            this.fearTimer--;
-        }
-
+        if (this.fearTimer > 0) this.fearTimer--;
         this.updateMemory(perception, stepCount);
     }
 
-    perceive(food, predators, trees, allAnts) {
+    updateIndoorMovement() {
+        const dx = this.indoorTargetX - this.indoorX;
+        const dy = this.indoorTargetY - this.indoorY;
+        const dist = Math.hypot(dx, dy);
+
+        if (dist < 2) {
+            this.pickNewIndoorTarget();
+            return;
+        }
+
+        const indoorSpeed = 1.2;
+        this.indoorX += (dx / dist) * indoorSpeed;
+        this.indoorY += (dy / dist) * indoorSpeed;
+    }
+
+    pickNewIndoorTarget() {
+        if (!this.anthill || this.anthill.rooms.length === 0) return;
+        const room = this.anthill.rooms[Math.floor(Math.random() * this.anthill.rooms.length)];
+        const angle = Math.random() * Math.PI * 2;
+        const radius = Math.random() * room.radius;
+        this.indoorTargetX = room.x + Math.cos(angle) * radius;
+        this.indoorTargetY = room.y + Math.sin(angle) * radius;
+    }
+
+    enterAnthill() {
+        if (!this.anthill) return;
+        this.insideAnthill = true;
+        this.indoorTimer = 120 + Math.floor(Math.random() * 120);
+        this.indoorX = this.anthill.x;
+        this.indoorY = this.anthill.y;
+        this.pickNewIndoorTarget();
+    }
+
+    exitAnthill() {
+        if (!this.anthill) return;
+        this.insideAnthill = false;
+        const angle = Math.random() * Math.PI * 2;
+        const dist = this.anthill.size + 12;
+        this.x = this.anthill.x + Math.cos(angle) * dist;
+        this.y = this.anthill.y + Math.sin(angle) * dist;
+    }
+
+    perceive(food, predators, trees) {
         const perception = {
             nearestFood: null,
             nearestPredator: null,
             nearestTree: null,
-            nearestAnt: null,
             foodInVision: [],
             predatorsInVision: [],
             foodDistance: Infinity,
@@ -159,7 +213,6 @@ class Ant {
             }
         }
 
-        // V2: при переноске еды всегда возвращаемся домой
         if (this.carryingFood && this.anthill) {
             this.seek(this.anthill);
             return;
@@ -188,10 +241,9 @@ class Ant {
         const dx = target.x - this.x;
         const dy = target.y - this.y;
         const dist = Math.hypot(dx, dy);
-
         if (dist > 0) {
-            this.vx = (dx / dist) * this.dna.speed;
-            this.vy = (dy / dist) * this.dna.speed;
+            this.targetVx = (dx / dist) * this.dna.speed;
+            this.targetVy = (dy / dist) * this.dna.speed;
         }
     }
 
@@ -199,25 +251,37 @@ class Ant {
         const dx = this.x - predator.x;
         const dy = this.y - predator.y;
         const dist = Math.hypot(dx, dy);
-
         if (dist > 0) {
             const fleeSpeed = this.dna.speed * (1 + this.dna.cautiousness);
-            this.vx = (dx / dist) * fleeSpeed;
-            this.vy = (dy / dist) * fleeSpeed;
+            this.targetVx = (dx / dist) * fleeSpeed;
+            this.targetVy = (dy / dist) * fleeSpeed;
         }
     }
 
     explore() {
-        this.angle += (Math.random() - 0.5) * 0.5;
-        this.vx = Math.cos(this.angle) * this.dna.speed;
-        this.vy = Math.sin(this.angle) * this.dna.speed;
+        this.angle += (Math.random() - 0.5) * 0.4;
+        this.targetVx = Math.cos(this.angle) * this.dna.speed;
+        this.targetVy = Math.sin(this.angle) * this.dna.speed;
     }
 
     move() {
+        const smoothing = 0.18;
+        this.vx += (this.targetVx - this.vx) * smoothing;
+        this.vy += (this.targetVy - this.vy) * smoothing;
+
+        const currentSpeed = Math.hypot(this.vx, this.vy);
+        if (currentSpeed > this.dna.speed * 1.6) {
+            const scale = (this.dna.speed * 1.6) / currentSpeed;
+            this.vx *= scale;
+            this.vy *= scale;
+        }
+
         const newX = this.x + this.vx;
         const newY = this.y + this.vy;
 
         if (this.checkCollision(newX, newY)) {
+            this.targetVx *= -0.7;
+            this.targetVy *= -0.7;
             this.vx *= -0.5;
             this.vy *= -0.5;
         } else {
@@ -233,9 +297,7 @@ class Ant {
         if (this.world && this.world.trees) {
             for (const tree of this.world.trees) {
                 const dist = Math.hypot(newX - tree.x, newY - tree.y);
-                if (dist < this.size + tree.size) {
-                    return true;
-                }
+                if (dist < this.size + tree.size) return true;
             }
         }
         return false;
@@ -248,7 +310,6 @@ class Ant {
                 if (dist < this.size + f.size / 2) {
                     f.eaten = true;
                     this.carryingFood = true;
-
                     this.memory.foodPositions.push({ x: f.x, y: f.y });
                     if (this.memory.foodPositions.length > this.dna.memorySize) {
                         this.memory.foodPositions.shift();
@@ -262,9 +323,7 @@ class Ant {
             if (dist < this.size + p.size / 2) {
                 this.deathEncounters++;
                 this.memory.dangerPositions.push({ x: p.x, y: p.y });
-                if (this.memory.dangerPositions.length > 3) {
-                    this.memory.dangerPositions.shift();
-                }
+                if (this.memory.dangerPositions.length > 3) this.memory.dangerPositions.shift();
                 this.takeDamage(p.attackRange ? 12 : 5);
             }
         });
@@ -272,23 +331,17 @@ class Ant {
 
     communicate(nearbyAnts, perception) {
         nearbyAnts.forEach(ant => {
-            if (this.carryingFood) {
-                ant.rememberFood(this.x, this.y);
-            }
-
+            if (this.carryingFood) ant.rememberFood(this.x, this.y);
             if (perception.nearestPredator && perception.predatorDistance < 70) {
                 ant.fleeFrom(perception.nearestPredator);
             }
         });
-
         this.lastCommunication = this.age;
     }
 
     rememberFood(x, y) {
         this.memory.foodPositions.unshift({ x, y });
-        if (this.memory.foodPositions.length > this.dna.memorySize) {
-            this.memory.foodPositions.pop();
-        }
+        if (this.memory.foodPositions.length > this.dna.memorySize) this.memory.foodPositions.pop();
     }
 
     fleeFrom(predator) {
@@ -298,9 +351,7 @@ class Ant {
 
     takeDamage(amount) {
         this.health -= amount;
-        if (this.health <= 0) {
-            this.die();
-        }
+        if (this.health <= 0) this.die();
     }
 
     die() {
@@ -312,14 +363,11 @@ class Ant {
         if (stepCount % 100 === 0 && this.memory.foodPositions.length > 0 && Math.random() < 0.1) {
             this.memory.foodPositions.shift();
         }
-
-        if (perception.nearestFood) {
-            this.memory.lastFoodTime = stepCount;
-        }
+        if (perception.nearestFood) this.memory.lastFoodTime = stepCount;
     }
 
     draw(ctx, camera) {
-        if (this.dead) return;
+        if (this.dead || this.insideAnthill) return;
 
         const screenPos = camera.worldToScreen(this.x, this.y);
 
@@ -333,7 +381,7 @@ class Ant {
 
         ctx.save();
         ctx.translate(screenPos.x, screenPos.y);
-        ctx.rotate(Math.atan2(this.vy, this.vx));
+        ctx.rotate(Math.atan2(this.vy, this.vx || 0.0001));
 
         if (this.selected) {
             ctx.fillStyle = CONFIG.COLORS.SELECTED_ANT;
@@ -355,7 +403,6 @@ class Ant {
         ctx.beginPath();
         ctx.arc(this.size, -this.size / 2, 2, 0, Math.PI * 2);
         ctx.fill();
-
         ctx.restore();
 
         if (this.foodEaten > 0) {
@@ -367,14 +414,15 @@ class Ant {
 
     getInfo() {
         return {
-            'Скорость': this.dna.speed.toFixed(2),
-            'Зрение': Math.floor(this.dna.visionRadius),
+            'Скорость': this.dna.speed.toFixed(1),
+            'Зрение': Math.round(this.dna.visionRadius),
             'Осторожность': (this.dna.cautiousness * 100).toFixed(0) + '%',
             'Исследование': (this.dna.explorationBias * 100).toFixed(0) + '%',
             'Память': this.dna.memorySize,
             'Съедено еды': this.foodEaten,
             'Несу еду': this.carryingFood ? 'да' : 'нет',
             'Здоровье': Math.max(0, Math.floor(this.health)),
+            'В муравейнике': this.insideAnthill ? 'да' : 'нет',
             'Шагов': this.age,
             'Фитнес': Math.floor(this.fitness)
         };
