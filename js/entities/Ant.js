@@ -12,6 +12,7 @@ class Ant {
         this.targetVx = 0;
         this.targetVy = 0;
         this.angle = Math.random() * Math.PI * 2;
+        this.heading = this.angle;
 
         this.dead = false;
         this.health = 100;
@@ -24,7 +25,6 @@ class Ant {
         this.fearTimer = 0;
         this.world = null;
 
-        // Муравей в отдельном мире муравейника
         this.insideAnthill = false;
         this.indoorX = 0;
         this.indoorY = 0;
@@ -64,16 +64,14 @@ class Ant {
             this.updateIndoorMovement();
             this.age++;
             if (this.indoorTimer > 0) this.indoorTimer--;
-            if (this.indoorTimer <= 0 && this.anthill) {
-                this.exitAnthill();
-            }
+            if (this.indoorTimer <= 0 && this.anthill) this.exitAnthill();
             return;
         }
 
         const oldX = this.x;
         const oldY = this.y;
 
-        const visionPenalty = env.weatherEffects && env.weatherEffects.visionPenalty ? env.weatherEffects.visionPenalty : 1;
+        const visionPenalty = env.weatherEffects?.visionPenalty || 1;
         const perception = this.perceive(food, predators, trees, allAnts, visionPenalty);
 
         if (this.age - this.lastCommunication > 60) {
@@ -83,9 +81,8 @@ class Ant {
                 !ant.insideAnthill &&
                 Math.hypot(ant.x - this.x, ant.y - this.y) < this.communicationRange
             );
-            if (nearbyAnts.length > 0) {
-                this.communicate(nearbyAnts, perception);
-            }
+
+            if (nearbyAnts.length > 0) this.communicate(nearbyAnts, perception);
         }
 
         this.decide(perception, env.pheromones);
@@ -134,6 +131,7 @@ class Ant {
 
     pickNewIndoorTarget() {
         if (!this.anthill || this.anthill.rooms.length === 0) return;
+
         const room = this.anthill.rooms[Math.floor(Math.random() * this.anthill.rooms.length)];
         const angle = Math.random() * Math.PI * 2;
         const radius = Math.random() * room.radius;
@@ -143,6 +141,7 @@ class Ant {
 
     enterAnthill() {
         if (!this.anthill) return;
+
         this.insideAnthill = true;
         this.indoorTimer = 120 + Math.floor(Math.random() * 120);
         this.indoorX = this.anthill.x;
@@ -152,6 +151,7 @@ class Ant {
 
     exitAnthill() {
         if (!this.anthill) return;
+
         this.insideAnthill = false;
         const angle = Math.random() * Math.PI * 2;
         const dist = this.anthill.size + 12;
@@ -175,15 +175,15 @@ class Ant {
         let minPredDist = visionRadius;
 
         food.forEach(f => {
-            if (!f.eaten) {
-                const dist = Math.hypot(f.x - this.x, f.y - this.y);
-                if (dist < visionRadius) {
-                    perception.foodInVision.push({ ...f, dist });
-                    if (dist < minFoodDist) {
-                        minFoodDist = dist;
-                        perception.nearestFood = f;
-                        perception.foodDistance = dist;
-                    }
+            if (f.eaten) return;
+
+            const dist = Math.hypot(f.x - this.x, f.y - this.y);
+            if (dist < visionRadius) {
+                perception.foodInVision.push({ ...f, dist });
+                if (dist < minFoodDist) {
+                    minFoodDist = dist;
+                    perception.nearestFood = f;
+                    perception.foodDistance = dist;
                 }
             }
         });
@@ -202,9 +202,7 @@ class Ant {
 
         trees.forEach(t => {
             const dist = Math.hypot(t.x - this.x, t.y - this.y);
-            if (dist < this.size + t.size) {
-                perception.nearestTree = t;
-            }
+            if (dist < this.size + t.size) perception.nearestTree = t;
         });
 
         return perception;
@@ -259,6 +257,7 @@ class Ant {
         const dx = target.x - this.x;
         const dy = target.y - this.y;
         const dist = Math.hypot(dx, dy);
+
         if (dist > 0) {
             this.targetVx = (dx / dist) * this.dna.speed;
             this.targetVy = (dy / dist) * this.dna.speed;
@@ -269,6 +268,7 @@ class Ant {
         const dx = this.x - predator.x;
         const dy = this.y - predator.y;
         const dist = Math.hypot(dx, dy);
+
         if (dist > 0) {
             const fleeSpeed = this.dna.speed * (1 + this.dna.cautiousness);
             this.targetVx = (dx / dist) * fleeSpeed;
@@ -283,14 +283,16 @@ class Ant {
     }
 
     move(weatherEffects = null) {
-        const smoothing = 0.18;
+        const smoothing = 0.15;
         this.vx += (this.targetVx - this.vx) * smoothing;
         this.vy += (this.targetVy - this.vy) * smoothing;
 
-        const speedMultiplier = weatherEffects && weatherEffects.antSpeedMultiplier ? weatherEffects.antSpeedMultiplier : 1;
+        const speedMultiplier = weatherEffects?.antSpeedMultiplier || 1;
+        const maxSpeed = this.dna.speed * 1.4 * speedMultiplier;
         const currentSpeed = Math.hypot(this.vx, this.vy);
-        if (currentSpeed > this.dna.speed * 1.6 * speedMultiplier) {
-            const scale = (this.dna.speed * 1.6 * speedMultiplier) / currentSpeed;
+
+        if (currentSpeed > maxSpeed) {
+            const scale = maxSpeed / currentSpeed;
             this.vx *= scale;
             this.vy *= scale;
         }
@@ -299,30 +301,34 @@ class Ant {
         const newY = this.y + this.vy;
 
         if (this.checkCollision(newX, newY)) {
-            this.targetVx *= -0.7;
-            this.targetVy *= -0.7;
-            this.vx *= -0.5;
-            this.vy *= -0.5;
+            this.targetVx *= -0.35;
+            this.targetVy *= -0.35;
+            this.vx *= -0.25;
+            this.vy *= -0.25;
         } else {
             this.x = newX;
             this.y = newY;
         }
 
-        if (this.world && this.world.waterZones) {
+        if (this.world?.waterZones) {
             for (const zone of this.world.waterZones) {
                 if (zone.contains(this.x, this.y)) {
-                    this.vx *= 0.82;
-                    this.vy *= 0.82;
+                    this.vx *= 0.84;
+                    this.vy *= 0.84;
                 }
             }
         }
 
         this.x = Math.max(this.size, Math.min(CONFIG.WORLD_WIDTH - this.size, this.x));
         this.y = Math.max(this.size, Math.min(CONFIG.WORLD_HEIGHT - this.size, this.y));
+
+        if (Math.hypot(this.vx, this.vy) > 0.06) {
+            this.heading = Math.atan2(this.vy, this.vx);
+        }
     }
 
     checkCollision(newX, newY) {
-        if (this.world && this.world.trees) {
+        if (this.world?.trees) {
             for (const tree of this.world.trees) {
                 const dist = Math.hypot(newX - tree.x, newY - tree.y);
                 if (dist < this.size + tree.size) return true;
@@ -333,15 +339,15 @@ class Ant {
 
     interact(food, predators) {
         food.forEach(f => {
-            if (!f.eaten && !this.carryingFood) {
-                const dist = Math.hypot(f.x - this.x, f.y - this.y);
-                if (dist < this.size + f.size / 2) {
-                    f.eaten = true;
-                    this.carryingFood = true;
-                    this.memory.foodPositions.push({ x: f.x, y: f.y });
-                    if (this.memory.foodPositions.length > this.dna.memorySize) {
-                        this.memory.foodPositions.shift();
-                    }
+            if (f.eaten || this.carryingFood) return;
+
+            const dist = Math.hypot(f.x - this.x, f.y - this.y);
+            if (dist < this.size + f.size / 2) {
+                f.eaten = true;
+                this.carryingFood = true;
+                this.memory.foodPositions.push({ x: f.x, y: f.y });
+                if (this.memory.foodPositions.length > this.dna.memorySize) {
+                    this.memory.foodPositions.shift();
                 }
             }
         });
@@ -398,46 +404,58 @@ class Ant {
         if (this.dead || this.insideAnthill) return;
 
         const screenPos = camera.worldToScreen(this.x, this.y);
+        const scale = camera.scale;
+        const bodyLength = this.size * 1.8 * scale;
+        const bodyWidth = this.size * 1.15 * scale;
 
         if (this.selected) {
-            ctx.strokeStyle = 'rgba(255, 255, 0, 0.3)';
+            ctx.strokeStyle = 'rgba(255, 255, 120, 0.35)';
             ctx.lineWidth = 1;
             ctx.beginPath();
-            ctx.arc(screenPos.x, screenPos.y, this.dna.visionRadius * camera.scale, 0, Math.PI * 2);
+            ctx.arc(screenPos.x, screenPos.y, this.dna.visionRadius * scale, 0, Math.PI * 2);
             ctx.stroke();
         }
 
         ctx.save();
         ctx.translate(screenPos.x, screenPos.y);
-        ctx.rotate(Math.atan2(this.vy, this.vx || 0.0001));
+        ctx.rotate(this.heading);
 
-        if (this.selected) {
-            ctx.fillStyle = CONFIG.COLORS.SELECTED_ANT;
-        } else if (this.carryingFood) {
-            ctx.fillStyle = '#ffd54f';
-        } else {
-            const intensity = 0.5 + this.dna.cautiousness * 0.5;
-            ctx.fillStyle = `rgb(255, ${Math.floor(170 * intensity)}, 0)`;
+        for (let i = -1; i <= 1; i += 2) {
+            ctx.strokeStyle = 'rgba(70, 36, 12, 0.9)';
+            ctx.lineWidth = Math.max(1, 1.2 * scale);
+            ctx.beginPath();
+            ctx.moveTo(-bodyLength * 0.2, i * bodyWidth * 0.2);
+            ctx.lineTo(-bodyLength * 0.8, i * bodyWidth * 0.9);
+            ctx.moveTo(bodyLength * 0.05, i * bodyWidth * 0.25);
+            ctx.lineTo(-bodyLength * 0.35, i * bodyWidth * 1.05);
+            ctx.stroke();
         }
 
+        const bodyGradient = ctx.createLinearGradient(-bodyLength, 0, bodyLength, 0);
+        bodyGradient.addColorStop(0, this.carryingFood ? '#c0811f' : '#ab5215');
+        bodyGradient.addColorStop(1, this.selected ? '#ffe26d' : '#f79a1f');
+
+        ctx.fillStyle = bodyGradient;
         ctx.beginPath();
-        ctx.moveTo(this.size * 2, 0);
-        ctx.lineTo(-this.size, -this.size);
-        ctx.lineTo(-this.size, this.size);
-        ctx.closePath();
+        ctx.ellipse(-bodyLength * 0.38, 0, bodyLength * 0.28, bodyWidth * 0.58, 0, 0, Math.PI * 2);
+        ctx.ellipse(0, 0, bodyLength * 0.3, bodyWidth * 0.5, 0, 0, Math.PI * 2);
+        ctx.ellipse(bodyLength * 0.4, 0, bodyLength * 0.34, bodyWidth * 0.44, 0, 0, Math.PI * 2);
         ctx.fill();
 
-        ctx.fillStyle = '#000';
+        ctx.fillStyle = '#23170f';
         ctx.beginPath();
-        ctx.arc(this.size, -this.size / 2, 2, 0, Math.PI * 2);
+        ctx.arc(bodyLength * 0.55, -bodyWidth * 0.15, Math.max(1, 1.4 * scale), 0, Math.PI * 2);
+        ctx.arc(bodyLength * 0.55, bodyWidth * 0.15, Math.max(1, 1.4 * scale), 0, Math.PI * 2);
         ctx.fill();
+
+        if (this.carryingFood) {
+            ctx.fillStyle = '#7dff8e';
+            ctx.beginPath();
+            ctx.arc(bodyLength * 0.95, 0, bodyWidth * 0.2, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
         ctx.restore();
-
-        if (this.foodEaten > 0) {
-            ctx.fillStyle = '#00ff00';
-            ctx.font = '10px Arial';
-            ctx.fillText('🍎' + this.foodEaten, screenPos.x - 10, screenPos.y - 20);
-        }
     }
 
     getInfo() {

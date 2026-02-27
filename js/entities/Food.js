@@ -8,27 +8,30 @@ class Food {
         this.color = CONFIG.COLORS.FOOD;
         this.eaten = false;
     }
-    
+
     draw(ctx, camera) {
         if (this.eaten) return;
-        
+
         const screenPos = camera.worldToScreen(this.x, this.y);
-        
-        ctx.fillStyle = this.color;
-        ctx.fillRect(
-            screenPos.x - this.size/2,
-            screenPos.y - this.size/2,
-            this.size,
-            this.size
-        );
-        
-        // Блик
-        ctx.fillStyle = '#aaffaa';
-        ctx.fillRect(
-            screenPos.x - this.size/4,
-            screenPos.y - this.size/4,
-            this.size/6,
-            this.size/6
-        );
+        const r = (this.size * camera.scale) / 2;
+
+        const glow = ctx.createRadialGradient(screenPos.x, screenPos.y, r * 0.2, screenPos.x, screenPos.y, r * 1.8);
+        glow.addColorStop(0, 'rgba(182, 255, 173, 0.95)');
+        glow.addColorStop(1, 'rgba(52, 161, 64, 0.25)');
+
+        ctx.fillStyle = glow;
+        ctx.beginPath();
+        ctx.arc(screenPos.x, screenPos.y, r * 1.4, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.fillStyle = '#7ff58f';
+        ctx.beginPath();
+        ctx.arc(screenPos.x, screenPos.y, r, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.fillStyle = 'rgba(255,255,255,0.65)';
+        ctx.beginPath();
+        ctx.arc(screenPos.x - r * 0.25, screenPos.y - r * 0.25, r * 0.25, 0, Math.PI * 2);
+        ctx.fill();
     }
 }
